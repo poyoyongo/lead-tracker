@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Restaurant Lead Tracker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f9f9f7; color: #111; padding: 2rem; }
+
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 10px; }
+  .header h1 { font-size: 20px; font-weight: 500; color: #111; }
+  .live-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #27500A; background: #EAF3DE; padding: 4px 10px; border-radius: 99px; }
+  .live-dot::before { content: ''; width: 7px; height: 7px; background: #639922; border-radius: 50%; animation: pulse 1.8s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
+  .stat { background: #f0f0ee; border-radius: 8px; padding: 10px 14px; }
+  .stat-label { font-size: 11px; color: #666; margin-bottom: 4px; }
+  .stat-val { font-size: 22px; font-weight: 500; color: #111; }
+
+  .top-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+  .top-bar input { flex: 1; min-width: 160px; padding: 7px 12px; font-size: 13px; border: 0.5px solid #ccc; border-radius: 8px; background: #fff; color: #111; }
+  .top-bar select { padding: 7px 10px; font-size: 13px; border: 0.5px solid #ccc; border-radius: 8px; background: #fff; color: #111; }
+  button { padding: 7px 14px; font-size: 13px; border: 0.5px solid #ccc; border-radius: 8px; background: transparent; color: #111; cursor: pointer; font-family: inherit; }
+  button:hover { background: #f0f0ee; }
+  .btn-add { border-color: #185FA5; color: #185FA5; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { text-align: left; padding: 8px 10px; border-bottom: 0.5px solid #ccc; font-size: 11px; font-weight: 500; color: #666; letter-spacing: 0.04em; white-space: nowrap; }
+  tbody tr { border-bottom: 0.5px solid #e8e8e4; transition: background 0.1s; }
+  tbody tr:hover { background: #f5f5f2; }
+  td { padding: 9px 10px; color: #111; vertical-align: middle; }
+  td.name { font-weight: 500; }
+  td.notes { color: #666; font-size: 12px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .b-new        { background: #E6F1FB; color: #0C447C; }
+  .b-contacted  { background: #FAEEDA; color: #633806; }
+  .b-followup   { background: #EEEDFE; color: #3C3489; }
+  .b-interested { background: #EAF3DE; color: #27500A; }
+  .b-closed     { background: #E1F5EE; color: #085041; }
+  .b-lost       { background: #FCEBEB; color: #791F1F; }
+
+  .action-btn { background: none; border: none; cursor: pointer; padding: 4px 6px; color: #888; font-size: 13px; border-radius: 6px; }
+  .action-btn:hover { background: #f0f0ee; color: #111; }
+
+  .empty { text-align: center; padding: 2.5rem; color: #888; font-size: 13px; }
+  .loading { text-align: center; padding: 2.5rem; color: #888; font-size: 13px; }
+
+  /* MODAL */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 100; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #fff; border: 0.5px solid #ccc; border-radius: 12px; padding: 1.5rem; width: 360px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal h3 { font-size: 15px; font-weight: 500; margin-bottom: 1rem; color: #111; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 7px 10px; font-size: 13px;
+    border: 0.5px solid #ccc; border-radius: 8px;
+    background: #fff; color: #111; font-family: inherit;
+  }
+  .field textarea { resize: vertical; min-height: 60px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1rem; }
+  .btn-save { background: #E6F1FB; color: #185FA5; border-color: #185FA5; }
+  .btn-delete { color: #791F1F; border-color: #F09595; }
+  .btn-delete:hover { background: #FCEBEB; }
+
+  .saving-indicator { font-size: 12px; color: #888; margin-left: auto; display: none; }
+  .saving-indicator.show { display: inline; }
+
+  @media (max-width: 600px) {
+    body { padding: 1rem; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    td.notes { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <h1>Restaurant Lead Tracker</h1>
+    <span class="live-dot" id="live-indicator">Connecting...</span>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat"><div class="stat-label">Total leads</div><div class="stat-val">—</div></div>
+    <div class="stat"><div class="stat-label">Interested</div><div class="stat-val">—</div></div>
+    <div class="stat"><div class="stat-label">Follow-up</div><div class="stat-val">—</div></div>
+    <div class="stat"><div class="stat-label">Closed</div><div class="stat-val">—</div></div>
+  </div>
+
+  <div class="top-bar">
+    <input type="text" id="search" placeholder="Search restaurant or contact..." oninput="render()">
+    <select id="filterStatus" onchange="render()">
+      <option value="">All statuses</option>
+      <option value="new">New</option>
+      <option value="contacted">Contacted</option>
+      <option value="followup">Follow-up</option>
+      <option value="interested">Interested</option>
+      <option value="closed">Closed</option>
+      <option value="lost">Lost</option>
+    </select>
+    <span class="saving-indicator" id="saving">Saving...</span>
+    <button class="btn-add" onclick="openModal()">+ Add lead</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Restaurant</th>
+        <th>Contact</th>
+        <th>Channel</th>
+        <th>Status</th>
+        <th>Last contact</th>
+        <th>Notes</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div id="loading" class="loading">Loading leads...</div>
+  <div id="empty" class="empty" style="display:none">No leads yet — add your first one above.</div>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3 id="modal-title">Add new lead</h3>
+    <div class="field"><label>Restaurant name *</label><input id="f-name" type="text" placeholder="El Rancho Grill"></div>
+    <div class="field"><label>Contact name</label><input id="f-contact" type="text" placeholder="Owner / Manager name"></div>
+    <div class="field"><label>Phone / WhatsApp</label><input id="f-phone" type="text" placeholder="+52 33 xxxxxxxx"></div>
+    <div class="field"><label>Email</label><input id="f-email" type="text" placeholder="correo@restaurante.com"></div>
+    <div class="field"><label>Channel</label>
+      <select id="f-channel">
+        <option value="WhatsApp">WhatsApp</option>
+        <option value="Email">Email</option>
+        <option value="Call">Call</option>
+      </select>
+    </div>
+    <div class="field"><label>Status</label>
+      <select id="f-status">
+        <option value="new">New</option>
+        <option value="contacted">Contacted</option>
+        <option value="followup">Follow-up</option>
+        <option value="interested">Interested</option>
+        <option value="closed">Closed</option>
+        <option value="lost">Lost</option>
+      </select>
+    </div>
+    <div class="field"><label>Notes</label><textarea id="f-notes" placeholder="e.g. Called, no answer. Try again Thu PM."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn-delete" id="btn-delete" style="display:none; margin-right:auto;" onclick="deleteLead()">Delete</button>
+      <button onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveLead()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import {
+    getFirestore, collection, onSnapshot,
+    addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBqtPPJLHzmcWqzE7d4Tuf1aSr-TOn989s",
+    authDomain: "lead-tracker-1d230.firebaseapp.com",
+    projectId: "lead-tracker-1d230",
+    storageBucket: "lead-tracker-1d230.firebasestorage.app",
+    messagingSenderId: "273705624624",
+    appId: "1:273705624624:web:bf39ba0343912524a939f5"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const BADGES = { new:'b-new', contacted:'b-contacted', followup:'b-followup', interested:'b-interested', closed:'b-closed', lost:'b-lost' };
+  const LABELS = { new:'New', contacted:'Contacted', followup:'Follow-up', interested:'Interested', closed:'Closed', lost:'Lost' };
+
+  let leads = [];
+  let editId = null;
+
+  function fmt(ts) {
+    if (!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString('es-MX', { day:'2-digit', month:'2-digit', year:'numeric' });
+  }
+
+  function renderStats() {
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="stat-label">Total leads</div><div class="stat-val">${leads.length}</div></div>
+      <div class="stat"><div class="stat-label">Interested</div><div class="stat-val">${leads.filter(l=>l.status==='interested').length}</div></div>
+      <div class="stat"><div class="stat-label">Follow-up</div><div class="stat-val">${leads.filter(l=>l.status==='followup').length}</div></div>
+      <div class="stat"><div class="stat-label">Closed</div><div class="stat-val">${leads.filter(l=>l.status==='closed').length}</div></div>
+    `;
+  }
+
+  function render() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const fs = document.getElementById('filterStatus').value;
+    const filtered = leads.filter(l => {
+      const matchQ = !q || (l.name||'').toLowerCase().includes(q) || (l.contact||'').toLowerCase().includes(q);
+      const matchS = !fs || l.status === fs;
+      return matchQ && matchS;
+    });
+
+    renderStats();
+    document.getElementById('loading').style.display = 'none';
+    const tbody = document.getElementById('tbody');
+    const empty = document.getElementById('empty');
+
+    if (!filtered.length) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = filtered.map(l => `
+      <tr>
+        <td class="name">${l.name||''}</td>
+        <td>${l.contact||'—'}</td>
+        <td>${l.channel||'—'}</td>
+        <td><span class="badge ${BADGES[l.status]||'b-new'}">${LABELS[l.status]||l.status}</span></td>
+        <td>${fmt(l.updatedAt||l.createdAt)}</td>
+        <td class="notes" title="${(l.notes||'').replace(/"/g,"'")}">${l.notes||'—'}</td>
+        <td><button class="action-btn" onclick="window._editLead('${l.id}')">✎</button></td>
+      </tr>
+    `).join('');
+  }
+
+  // Real-time listener
+  const leadsRef = collection(db, 'leads');
+  const leadsQuery = query(leadsRef, orderBy('createdAt', 'desc'));
+
+  onSnapshot(leadsQuery, (snapshot) => {
+    leads = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+    const ind = document.getElementById('live-indicator');
+    ind.textContent = 'Live — synced';
+    ind.style.background = '#EAF3DE';
+    ind.style.color = '#27500A';
+  }, (err) => {
+    console.error(err);
+    const ind = document.getElementById('live-indicator');
+    ind.textContent = 'Connection error';
+    ind.style.background = '#FCEBEB';
+    ind.style.color = '#791F1F';
+  });
+
+  // Modal
+  window.openModal = function(id) {
+    editId = id || null;
+    document.getElementById('modal-title').textContent = id ? 'Edit lead' : 'Add new lead';
+    document.getElementById('btn-delete').style.display = id ? 'inline-block' : 'none';
+    const l = id ? leads.find(x=>x.id===id) : {};
+    document.getElementById('f-name').value = l.name||'';
+    document.getElementById('f-contact').value = l.contact||'';
+    document.getElementById('f-phone').value = l.phone||'';
+    document.getElementById('f-email').value = l.email||'';
+    document.getElementById('f-channel').value = l.channel||'WhatsApp';
+    document.getElementById('f-status').value = l.status||'new';
+    document.getElementById('f-notes').value = l.notes||'';
+    document.getElementById('modal').classList.add('open');
+    setTimeout(() => document.getElementById('f-name').focus(), 100);
+  };
+
+  window.closeModal = function() {
+    document.getElementById('modal').classList.remove('open');
+    editId = null;
+  };
+
+  window._editLead = function(id) { window.openModal(id); };
+
+  function showSaving() {
+    const s = document.getElementById('saving');
+    s.classList.add('show');
+    setTimeout(() => s.classList.remove('show'), 1800);
+  }
+
+  window.saveLead = async function() {
+    const name = document.getElementById('f-name').value.trim();
+    if (!name) { document.getElementById('f-name').focus(); return; }
+    const data = {
+      name,
+      contact: document.getElementById('f-contact').value.trim(),
+      phone: document.getElementById('f-phone').value.trim(),
+      email: document.getElementById('f-email').value.trim(),
+      channel: document.getElementById('f-channel').value,
+      status: document.getElementById('f-status').value,
+      notes: document.getElementById('f-notes').value.trim(),
+      updatedAt: serverTimestamp()
+    };
+    try {
+      showSaving();
+      if (editId) {
+        await updateDoc(doc(db, 'leads', editId), data);
+      } else {
+        data.createdAt = serverTimestamp();
+        await addDoc(leadsRef, data);
+      }
+      window.closeModal();
+    } catch(e) {
+      alert('Error saving: ' + e.message);
+    }
+  };
+
+  window.deleteLead = async function() {
+    if (!editId) return;
+    if (!confirm('Delete this lead permanently?')) return;
+    try {
+      await deleteDoc(doc(db, 'leads', editId));
+      window.closeModal();
+    } catch(e) {
+      alert('Error deleting: ' + e.message);
+    }
+  };
+
+  // Search binding
+  document.getElementById('search').addEventListener('input', render);
+  document.getElementById('filterStatus').addEventListener('change', render);
+
+  // Close modal on bg click
+  document.getElementById('modal').addEventListener('click', function(e) {
+    if (e.target === this) window.closeModal();
+  });
+</script>
+</body>
+</html>
